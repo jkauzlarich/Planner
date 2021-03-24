@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="app" ng-controller="calendarCtrl">
+<head>
+    <meta charset="UTF-8">
+    <title>{{title}}</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <link rel="shortcut icon" href="mitre.ico" />
+
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.6.0/angular.min.js"></script>
+    <script src="https://code.jquery.com/jquery-1.10.2.min.js" integrity="sha256-C6CB9UYIS9UJeqinPHWTHVqh/E1uhG5Twh+Y5qFQmYg=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.0/d3.min.js"></script>
+    <script src="d3.tip.v0.6.3.js"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+    <script src="xlsx.core.min.js"></script>
+    <script src="ics.js"></script>
+    <script type="text/javascript" src="ivml.0.0.0.js"></script>
+
+    <link rel="stylesheet" href="style.css"/>
+
+    <script type="text/javascript" src="app.js"></script>
+</head>
+<body style="overflow: hidden;">
+
+<nav class="navbar navbar-default navbar-fixed-top" role="navigation" style="border-bottom: 1px solid black">
+    <div class="container-fluid" style="padding-right: 20px; padding-left: 20px;">
+        <div class="navbar-nav">
+            <ul class="nav navbar-nav" style="position: absolute; top: 13px;">
+                <li ng-click="view = 'gantt'" class="glyphicon glyphicon-calendar" style="cursor: pointer; font-size: 30px; " ng-style="{'opacity': !view || view === 'gantt' ? 1 : 0.3}"
+                    data-toggle="tooltip" data-placement="bottom" title="Calendar View"></li>
+                <li ng-click="view = 'list'" class="glyphicon glyphicon-list" style="cursor: pointer; font-size: 30px; margin-left: 20px;" ng-style="{'opacity': view === 'list' ? 1 : 0.3}"
+                    data-toggle="tooltip" data-placement="bottom" title="List View"></li>
+                </li>
+            </ul>
+        </div>
+
+        <div id="header">
+            <span style="font-size: 40px; font-weight: bold;">{{title}}</span>
+        </div>
+    </div>
+</nav>
+
+<nav class="navbar navbar-default navbar-fixed-bottom" role="navigation" style="border-top-color: black; min-height: 40px;">
+    <h4 style="margin-top: 10px; margin-left: 20px; font-size: 16px;">© MITRE Corp 2020
+<!--        <a href="mailto:jkauzlarich@mitre.org;eelsaesser@mitre.org?subject=Calendar Feedback" style="margin-left: 10px">Feedback</a>-->
+    </h4>
+</nav>
+
+<div style="height: 58px;"></div>
+
+<div class="tab-pane" id="calendar">
+
+    <div id="calendar-container" ng-show="!view || view === 'gantt'" style="margin-top: 10px;"></div>
+
+    <div id="list-container" ng-show="view === 'list'" style="padding: 20px;">
+        <span style="border: 1px solid black; padding: 15px;">
+            <input type="radio" ng-model="listFilter" ng-change="filterList()" value="all">
+            <span ng-style="{'color': listFilter === 'all' ? 'black' : 'lightgrey'}">
+                All
+            </span>
+            <input type="radio" ng-model="listFilter" ng-change="filterList()" value="week" style="margin-left: 30px;">
+            <span ng-style="{'color': listFilter === 'week' ? 'black' : 'lightgrey'}">
+                Week of <select class="form-control" ng-change="filterList()" ng-disabled="listFilter !== 'week'" ng-model="week" ng-options="week for week in weeks"></select>
+            </span>
+            <input type="radio" ng-model="listFilter" ng-change="filterList()" value="month" style="margin-left: 30px;">
+            <span ng-style="{'color': listFilter === 'month' ? 'black' : 'lightgrey'}">
+                Month of <select class="form-control" ng-change="filterList()" ng-disabled="listFilter !== 'month'" ng-model="month" ng-options="month for month in months"></select>
+            </span>
+        </span>
+
+        <button class="btn btn-sm btn-default" style="display: inline; float: right;" ng-click="exportTableToExcel()"><img src="excel-icon.png" width="20"> Export to Excel</button>
+
+        <table class="table table-striped" style="margin-top: 20px">
+            <thead>
+            <tr>
+                <th>Activity</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Add to Outlook</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr ng-repeat="activity in activitiesSortedFiltered" ng-if="(activity.end && activity.end >= currentDays) || activity.milestone >= currentDays">
+                <td><a href="" ng-click="showActivityModal(activity)">{{activity.activity}}</a></td>
+                <td>{{activity.startDate ? activity.startDate : activity.milestoneDate}}</td>
+                <td>{{activity.endDate ? activity.endDate : activity.milestoneDate}}</td>
+                <td style="text-align: center"><img src="outlook-icon.png" width="20" style="cursor: pointer;" ng-click="exportToOutlook(activity)"></td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div ng-show="view === 'graph' && barChartCategory === 'organizations'" style="position: absolute; top: 108px; right: 420px; border: 1px solid black; padding: 10px">
+        <table role="presentation">
+            <tr ng-repeat="org in orgs">
+                <td><svg width="20" height="20"><rect width="20" height="20" ng-style="{fill: color($index)}"></rect></svg></td>
+                <td><span style="padding-left: 10px">{{org}}</span></td>
+            </tr>
+        </table>
+    </div>
+    <div ng-show="view === 'graph' && barChartCategory === 'roles'" style="position: absolute; top: 108px; right: 420px; border: 1px solid black; padding: 10px">
+        <table role="presentation">
+            <tr ng-repeat="role in roles">
+                <td><svg width="20" height="20"><rect width="20" height="20" ng-style="{fill: color($index)}"></rect></svg></td>
+                <td><span style="padding-left: 10px">{{role}}</span></td>
+            </tr>
+        </table>
+    </div>
+
+    <div id="calendar-control-panel" style="position: absolute; top: 58px; right: 0; border-left: 1px solid black; width: 400px;">
+        <div id="control-panel-content" style="padding: 15px;">
+            <h3 style="margin-bottom: 10px;">Filters</h3>
+            <table role="presentation" style="margin-bottom: 15px;">
+                <tr>
+                    <td><label for="process-filter">{{label1}} 1:</label></td>
+                    <td>
+                        <span class="button-group" ng-class="{'has-error': activities.length === 0}">
+                            <select id="process-filter" class="form-control" style="width: 200px; margin-left: 10px;" ng-model="processFilter" ng-options="process for process in processes" ng-change="createChart();"><option value="">---</option></select>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding-top: 10px"><label for="process-filter">{{label1}} 2:</label></td>
+                    <td style="padding-top: 10px">
+                        <span class="button-group" ng-class="{'has-error': activities.length === 0}">
+                            <select id="process-filter2" class="form-control" style="width: 200px; margin-left: 10px;" ng-model="processFilter2" ng-options="process for process in processes" ng-change="createChart();"><option value="">---</option></select>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding-top: 10px"><label for="process-filter">{{label2}}:</label></td>
+                    <td style="padding-top: 10px">
+                        <span class="button-group" ng-class="{'has-error': activities.length === 0}">
+                            <select id="filter1" class="form-control" style="width: 200px; margin-left: 10px;" ng-model="filter1" ng-options="filter1 for filter1 in filter1s" ng-change="createChart();"><option value="">---</option></select>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding-top: 10px"><label for="process-filter">{{label3}}:</label></td>
+                    <td style="padding-top: 10px">
+                        <span class="button-group" ng-class="{'has-error': activities.length === 0}">
+                            <select id="filter2" class="form-control" style="width: 200px; margin-left: 10px;" ng-model="filter2" ng-options="filter2 for filter2 in filter2s" ng-change="createChart();"><option value="">---</option></select>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding-top: 10px"><label for="search-string">Search String:</label></td>
+                    <td style="padding-top: 10px;">
+                        <span class="button-group" ng-class="{'has-error': activities.length === 0}">
+                            <input id="search-string" class="form-control" style="width: 200px; margin-left: 10px; padding-left: 3px;" placeholder="Enter keyword or phrase..." ng-model="searchString" ng-change="createChart();">
+                        </span>
+                        <button title="Clear search string" ng-show="searchString && searchString !== ''" class="btn btn-xs btn-danger" ng-click="searchString = ''; createChart();"><i class="glyphicon glyphicon-remove"></i></button>
+                    </td>
+                </tr>
+            </table>
+            <!--<input type="checkbox" ng-model="showConnections" ng-change="createChart()"> Show connections<br>-->
+            <input type="checkbox" ng-model="showOnlyCritical" ng-change="createChart()"> Show only critical activities
+            <hr>
+            <h3 style="margin-bottom: 15px;">Activities</h3>
+            <ul style="padding-left: 15px;">
+                <li>
+                    <span class="red">0-30 Days Out</span>
+                    <ul style="margin-bottom: 15px; padding-left: 20px; margin-top: 5px;">
+                        <li ng-repeat="(group, activities) in activityBins[1]">
+                            {{group}}
+                            <ul style="padding-left: 20px;">
+                                <li ng-repeat="activity in activities">
+                                    <a href="" ng-click="showActivityModal(activity)">{{activity.activity}}</a>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </li>
+                <li>
+                    <span class="orange">31-90 Days Out</span>
+                    <ul style="margin-bottom: 15px; padding-left: 20px; margin-top: 5px;">
+                        <li ng-repeat="(group, activities) in activityBins[2]">
+                            {{group}}
+                            <ul style="padding-left: 20px;">
+                                <li ng-repeat="activity in activities">
+                                    <a href="" ng-click="showActivityModal(activity)">{{activity.activity}}</a>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </li>
+                <li>
+                    <span class="yellow">91-180 Days Out</span>
+                    <ul style="margin-bottom: 15px; padding-left: 20px; margin-top: 5px;">
+                        <li ng-repeat="(group, activities) in activityBins[3]">
+                            {{group}}
+                            <ul style="padding-left: 20px;">
+                                <li ng-repeat="activity in activities">
+                                    <a href="" ng-click="showActivityModal(activity)">{{activity.activity}}</a>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </li>
+                <li>
+                    <span class="green">Over 180 Days Out</span>
+                    <ul style="margin-bottom: 10px; padding-left: 20px; margin-top: 5px;">
+                        <li ng-repeat="(group, activities) in activityBins[4]">
+                            {{group}}
+                            <ul style="padding-left: 20px;">
+                                <li ng-repeat="activity in activities">
+                                    <a href="" ng-click="showActivityModal(activity)">{{activity.activity}}</a>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="modal fade" id="activity-modal">
+        <div class="modal-dialog" style="width: 500px">
+            <div class="modal-content" style="width: 500px">
+                <div class="modal-header">
+                    <h3>{{activity.activity}}</h3>
+                </div>
+
+                <div class="modal-body">
+                    <div ng-show="activity.startDate"><strong>Start Date: </strong>{{activity.startDate}}<span ng-show="activity.startTime"> ({{activity.startTime}})</span></div>
+                    <div ng-show="activity.endDate"><strong>End Date: </strong>{{activity.endDate}} <span ng-show="activity.endTime"> ({{activity.endTime}})</span></div>
+                    <div ng-show="activity.milestoneDate"><strong>Milestone Date: </strong>{{activity.milestoneDate}}
+                        <span ng-show="activity.startTime && activity.endTime">({{activity.startTime}} - {{activity.endTime}})</span>
+                    </div>
+                    <br>
+                    <div ng-show="activity.location">
+                        <strong>Location: </strong>
+                        <span ng-bind-html="activity.locationHtml" style="white-space: pre-wrap"></span>
+                    </div>
+                    <div ng-show="activity.location"><br></div>
+                    <div ng-show="activity.description && activity.description !== 'Optional'">
+                        <strong>Description: </strong>
+                        <span ng-bind-html="activity.descriptionHtml" style="white-space: pre-wrap"></span>
+                    </div>
+                    <div ng-show="activity.description && activity.description !== 'Optional'"><br></div>
+                    <div ng-show="activity.orgs[0]">
+                        <strong>Primary Organization: </strong>
+                        {{activity.orgs[0].org}} ({{activity.orgs[0].loe === 1 ? 'low' : activity.orgs[0].loe === 2 ? 'medium' : 'high'}} LOE)
+                    </div>
+                    <div ng-show="activity.orgs[1]">
+                        <strong>Secondary Organization<span ng-show="activity.orgs.length > 2">s</span>: </strong>
+                        {{activity.orgs[1].org}} ({{activity.orgs[1].loe === 1 ? 'low' : activity.orgs[1].loe === 2 ? 'medium' : 'high'}} LOE)
+                        <span ng-show="activity.orgs.length > 2">, {{activity.orgs[2].org}} ({{activity.orgs[2].loe === 1 ? 'low' : activity.orgs[2].loe === 2 ? 'medium' : 'high'}} LOE)</span>
+                    </div>
+                    <div ng-show="activity.orgs.length && activity.actions"><br></div>
+                    <div ng-show="activity.actions"><strong>Preparatory Actions: </strong>{{activity.actions}}</div>
+                    <div ng-show="activity.connections.length"><br></div>
+                    <div ng-show="activity.connections.length">
+                        <strong>Connections:</strong><br>
+                        <ul>
+                            <li ng-repeat="connection in activity.connections">{{connection}}</li>
+                        </ul>
+                    </div>
+                    <div ng-show="activity.externalLink">
+                        <a target="_blank" ng-attr-href="{{activity.externalLink}}">External Link <span class="glyphicon glyphicon-new-window"></span></a>
+                    </div>
+                    <div ng-show="activity.contact"><br></div>
+                    <div ng-show="activity.contact">
+                        <strong>Contact: </strong>
+                        {{activity.contact}}, <a show="activity.email" ng-href="mailto:{{activity.email}}">{{activity.email}}</a>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <table role="presentation" style="float:right;">
+                        <tr>
+                            <td>
+                                <button type="button" class="btn btn-default" ng-click="exportToOutlook(activity)"><img src="outlook-icon.png" width="20" style="cursor: pointer;"> Add to Outlook</button>
+                                <button type="button" data-dismiss="modal" class="btn btn-primary">OK</button>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div id="loader" class="modal" style="position: absolute; left: 50%; top: 50%;" hidden>Loading...</div>
+
+</body>
+</html>
